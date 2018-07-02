@@ -11,6 +11,7 @@ import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.Operation
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.PathItem.HttpMethod
+import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.parser.OpenAPIV3Parser
 import io.swagger.v3.parser.converter.SwaggerConverter
 import io.swagger.v3.parser.core.models.ParseOptions
@@ -28,7 +29,7 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
      * Convenience method for filtering and iterating over the paths in order to create Violations.
      * @param pathFilter a filter selecting the paths to validate
      * @param action the action to perform on filtered items
-     * @return a list of Violations and/or nulls where no violations are necessary
+     * @return a list of Violations
      */
     fun validatePaths(
         pathFilter: (Map.Entry<String, PathItem>) -> Boolean = { true },
@@ -39,6 +40,13 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
         .flatMap(action)
         .filterNotNull()
 
+    /**
+     * Convenience method for filtering and iterating over the operations in order to create Violations.
+     * @param pathFilter a filter selecting the paths to validate
+     * @param operationFilter a filter selecting the operations to validate
+     * @param action the action to perform on filtered items
+     * @return a list of Violations
+     */
     fun validateOperations(
         pathFilter: (Map.Entry<String, PathItem>) -> Boolean = { true },
         operationFilter: (Map.Entry<HttpMethod, Operation>) -> Boolean = { true },
@@ -50,6 +58,21 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
             .flatMap(action)
             .filterNotNull()
     }
+
+    /**
+     * Convenience method for filtering and iterating over the schemas in order to create Violations.
+     * @param schemaFilter a filter selecting the schemas to validate
+     * @param action the action to perform on filtered items
+     * @return a list of Violations
+     */
+    fun validateSchemas(
+        schemaFilter: (Map.Entry<String, Schema<*>>) -> Boolean = { true },
+        action: (Map.Entry<String, Schema<*>>) -> List<Violation?>
+    ): List<Violation> = api.components.schemas
+        .orEmpty()
+        .filter(schemaFilter)
+        .flatMap(action)
+        .filterNotNull()
 
     /**
      * Creates a List of one Violation with a pointer to the OpenAPI or Swagger model node specified,
