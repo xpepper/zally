@@ -5,40 +5,39 @@ import de.zalando.zally.rule.api.Check
 import de.zalando.zally.rule.api.Rule
 import de.zalando.zally.rule.api.Severity
 import de.zalando.zally.rule.api.Violation
-import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
-import io.swagger.v3.oas.models.Paths
-import io.swagger.v3.oas.models.media.Content
+import io.swagger.v3.oas.models.Operation
+import io.swagger.v3.oas.models.PathItem
+import io.swagger.v3.oas.models.media.ArraySchema
+import io.swagger.v3.oas.models.media.ComposedSchema
 import io.swagger.v3.oas.models.media.Schema
-import io.swagger.v3.oas.models.parameters.Parameter
 import io.swagger.v3.oas.models.responses.ApiResponse
 
 @Rule(
-        ruleSet = ZallyRuleSet::class,
-        id = "S005",
-        severity = Severity.SHOULD,
-        title = "Do not leave unused definitions"
+    ruleSet = ZallyRuleSet::class,
+    id = "S005",
+    severity = Severity.SHOULD,
+    title = "Do not leave unused definitions"
 )
 class NoUnusedDefinitionsRule2 {
 
     @Check(severity = Severity.SHOULD)
     fun validate(context: Context): List<Violation> =
-            findUnreferencedParameters(context) + findUnreferencedSchemas(context)
+        findUnreferencedParameters(context) + findUnreferencedSchemas(context)
 
     private fun findUnreferencedParameters(context: Context): List<Violation> {
         val paramsInPaths = context.unrecordedApi.paths.orEmpty().flatMap { (_, path) ->
             path.readOperations().flatMap { operation ->
-                operation.parameters.orEmpty()
-                        .map { it.`$ref` }
-                        .filter { !it.isNullOrBlank() }
+                val fromParameters = operation.parameters.orEmpty()
+                val fromBody = listOfNotNull(operation.requestBody)
+                fromParameters + fromBody
             }
         }
         return context.validateParameters { (_, parameter) ->
-            val pointer = context.pointerForValue(parameter)
-            if (pointer.toString() in paramsInPaths) {
+            if (parameter in paramsInPaths) {
                 emptyList()
             } else {
-                context.violations("Unused parameter definition: $pointer", pointer)
+                context.violations("Unused parameter definition.", parameter)
             }
         }
     }
@@ -50,41 +49,55 @@ class NoUnusedDefinitionsRule2 {
             if (pointer.toString() in allRefs) {
                 emptyList()
             } else {
-                context.violations("Unused schema definition: $pointer", pointer)
+                context.violations("Unused schema definition.", pointer)
             }
         }
     }
 
-    private fun findAllRefs(api: OpenAPI): List<String> =
-            findAllRefs(api.paths) + findAllRefs(api.components)
+    private fun findAllRefs(api: OpenAPI): List<String> {
+        val refsInPaths = api.paths.orEmpty().values.flatMap(this::findAllRefs)
+        val refsInDefinitions = api.components?.schemas.orEmpty().values.flatMap(this::findAllRefs)
+        return refsInPaths + refsInDefinitions
+    }
 
-    private fun findAllRefs(paths: Paths?): List<String> =
-            paths.orEmpty().flatMap { (_, path) ->
-                path.readOperations().flatMap { operation ->
-                    val inParams = operation.parameters.orEmpty().flatMap(this::findAllRefs)
-                    val inResponse = operation.responses.orEmpty().values.flatMap(this::findAllRefs)
-                    inParams + inResponse
-                }
+    private fun findAllRefs(path: PathItem): List<String> =
+        path.readOperations().flatMap(this::findAllRefs)
+
+
+    private fun findAllRefs(operation: Operation): List<String> {
+        val inParameters = operation.requestBody?.content?.values.orEmpty().map { it.schema }.flatMap(this::findAllRefs)  //operation.parameters.orEmpty().flatMap(this::findAllRefs)
+        val inResponse = operation.responses.orEmpty().values.flatMap(this::findAllRefs)
+        return inParameters + inResponse
+    }
+
+    private fun findAllRefs(schema: Schema<*>): List<String> =
+        when (schema) {
+            is ArraySchema ->
+                findAllRefs(schema.items)
+            is ComposedSchema ->
+                findAllRefsFromComposedSchema(schema)
+            else -> {
+                schema.properties.orEmpty().values.flatMap(this::findAllRefs) +
+                    findAllRefsFromProperties(schema.properties)
             }
+        }
 
-    private fun findAllRefs(components: Components?): List<String> =
-            components?.schemas?.values.orEmpty().flatMap(::findAllRefs)
+    private fun findAllRefsFromComposedSchema(schema: ComposedSchema): List<String> =
+        schema.allOf.orEmpty().flatMap(this::findAllRefs) +
+            findAllRefsFromProperties(schema.additionalProperties)
 
-    private fun findAllRefs(param: Parameter): List<String> =
-            listOfNotNull(param.`$ref`.takeIf { !it.isNullOrBlank() }) +
-                    findAllRefs(param.schema)
+    private fun findAllRefsFromProperties(additionalProperties: Any?): List<String> =
+        when(additionalProperties) {
+            is Schema<*> ->
+                findAllRefs(additionalProperties)
+            else ->
+                emptyList()
+        }
 
-    private fun findAllRefs(schema: Schema<*>?): List<String> =
-            if (schema === null) emptyList()
-            else listOfNotNull(schema.`$ref`.takeIf { !it.isNullOrBlank() })
-
-    private fun findAllRefs(apiResponse: ApiResponse): List<String> =
-            listOfNotNull(apiResponse.`$ref`.takeIf { !it.isNullOrBlank() }) + findAllRefs(apiResponse.content)
-
-    private fun findAllRefs(content: Content?): List<String> = content
-            .orEmpty()
+    private fun findAllRefs(response: ApiResponse): List<String> =
+        response.content.orEmpty()
             .values
-            .map { it.schema }
-            .flatMap(::findAllRefs)
+            .mapNotNull { it.schema }
+            .flatMap(this::findAllRefs)
 
 }

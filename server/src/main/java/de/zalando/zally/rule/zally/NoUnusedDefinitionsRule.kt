@@ -29,11 +29,14 @@ class NoUnusedDefinitionsRule {
 
     @Check(severity = Severity.SHOULD)
     fun validate(swagger: Swagger): Violation? {
-        val paramsInPaths = swagger.paths.orEmpty().values.flatMap { path ->
+
+        val paramsInPaths: Set<Parameter> = swagger.paths.orEmpty().values.flatMap { path ->
             path.operations.orEmpty().flatMap { operation ->
                 operation.parameters.orEmpty()
             }
         }.toSet()
+        val unusedParams = swagger.parameters.orEmpty().filterValues { it !in paramsInPaths }.keys.map { "/parameters/$it" }
+
 
         val refsInPaths = swagger.paths.orEmpty().values.flatMap { path ->
             path.operations.orEmpty().flatMap { operation ->
@@ -44,8 +47,6 @@ class NoUnusedDefinitionsRule {
         }
         val refsInDefs = swagger.definitions.orEmpty().values.flatMap(this::findAllRefs)
         val allRefs = (refsInPaths + refsInDefs).toSet()
-
-        val unusedParams = swagger.parameters.orEmpty().filterValues { it !in paramsInPaths }.keys.map { "/parameters/$it" }
         val unusedDefs = swagger.definitions.orEmpty().keys.filter { it !in allRefs }.map { "/definitions/$it" }
 
         val paths = unusedParams + unusedDefs
@@ -63,8 +64,10 @@ class NoUnusedDefinitionsRule {
 
     fun findAllRefs(model: Model?): List<String> =
         when (model) {
-            is RefModel -> listOf(model.simpleRef)
-            is ArrayModel -> findAllRefs(model.items)
+            is RefModel ->
+                listOf(model.simpleRef)
+            is ArrayModel ->
+                findAllRefs(model.items)
             is ModelImpl ->
                 model.properties.orEmpty().values.flatMap(this::findAllRefs) +
                     findAllRefs(model.additionalProperties)
@@ -78,10 +81,15 @@ class NoUnusedDefinitionsRule {
 
     fun findAllRefs(prop: Property?): List<String> =
         when (prop) {
-            is RefProperty -> listOf(prop.simpleRef)
-            is ArrayProperty -> findAllRefs(prop.items)
-            is MapProperty -> findAllRefs(prop.additionalProperties)
-            is ObjectProperty -> prop.properties.orEmpty().values.flatMap(this::findAllRefs)
-            else -> emptyList()
+            is RefProperty ->
+                listOf(prop.simpleRef)
+            is ArrayProperty ->
+                findAllRefs(prop.items)
+            is MapProperty ->
+                findAllRefs(prop.additionalProperties)
+            is ObjectProperty ->
+                prop.properties.orEmpty().values.flatMap(this::findAllRefs)
+            else ->
+                emptyList()
         }
 }
