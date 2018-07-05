@@ -43,7 +43,7 @@ class NoUnusedDefinitionsRule2 {
     }
 
     private fun findUnreferencedSchemas(context: Context): List<Violation> {
-        val allRefs: Set<Schema<*>> = findAllRefs(context.unrecordedApi).toSet()
+        val allRefs: Set<Schema<*>> = findAllSchemas(context.unrecordedApi).toSet()
         return context.validateSchemas { (_, schema) ->
             if (schema in allRefs) {
                 emptyList()
@@ -53,51 +53,51 @@ class NoUnusedDefinitionsRule2 {
         }
     }
 
-    private fun findAllRefs(api: OpenAPI): List<Schema<*>> {
-        val refsInPaths = api.paths.orEmpty().values.flatMap(this::findAllRefs)
-        val refsInDefinitions = api.components?.schemas.orEmpty().values.flatMap(this::findAllRefs)
+    private fun findAllSchemas(api: OpenAPI): List<Schema<*>> {
+        val refsInPaths = api.paths.orEmpty().values.flatMap(this::findAllSchemas)
+        val refsInDefinitions = api.components?.schemas.orEmpty().values.flatMap(this::findAllSchemas)
         return refsInPaths + refsInDefinitions
     }
 
-    private fun findAllRefs(path: PathItem): List<Schema<*>> =
-        path.readOperations().flatMap(this::findAllRefs)
+    private fun findAllSchemas(path: PathItem): List<Schema<*>> =
+        path.readOperations().flatMap(this::findAllSchemas)
 
 
-    private fun findAllRefs(operation: Operation): List<Schema<*>> {
-        val inParameters = operation.requestBody?.content?.values.orEmpty().map { it.schema }.flatMap(this::findAllRefs)  //operation.parameters.orEmpty().flatMap(this::findAllRefs)
-        val inResponse = operation.responses.orEmpty().values.flatMap(this::findAllRefs)
+    private fun findAllSchemas(operation: Operation): List<Schema<*>> {
+        val inParameters = operation.requestBody?.content?.values.orEmpty().map { it.schema }.flatMap(this::findAllSchemas)  //operation.parameters.orEmpty().flatMap(this::findAllSchemas)
+        val inResponse = operation.responses.orEmpty().values.flatMap(this::findAllSchemas)
         return inParameters + inResponse
     }
 
-    private fun findAllRefs(schema: Schema<*>): List<Schema<*>> =
+    private fun findAllSchemas(schema: Schema<*>): List<Schema<*>> =
         when (schema) {
             is ArraySchema ->
-                findAllRefs(schema.items)
+                findAllSchemas(schema.items)
             is ComposedSchema ->
-                findAllRefs(schema)
+                findAllSchemas(schema)
             else -> {
                 listOf(schema) +
-                    schema.properties.orEmpty().values.flatMap(this::findAllRefs) +
+                    schema.properties.orEmpty().values.flatMap(this::findAllSchemas) +
                     findAllRefsFromProperties(schema.properties)
             }
         }
 
-    private fun findAllRefs(schema: ComposedSchema): List<Schema<*>> =
-        schema.allOf.orEmpty().flatMap(this::findAllRefs) +
+    private fun findAllSchemas(schema: ComposedSchema): List<Schema<*>> =
+        schema.allOf.orEmpty().flatMap(this::findAllSchemas) +
             findAllRefsFromProperties(schema.additionalProperties)
 
     private fun findAllRefsFromProperties(additionalProperties: Any?): List<Schema<*>> =
         when (additionalProperties) {
             is Schema<*> ->
-                findAllRefs(additionalProperties)
+                findAllSchemas(additionalProperties)
             else ->
                 emptyList()
         }
 
-    private fun findAllRefs(response: ApiResponse): List<Schema<*>> =
+    private fun findAllSchemas(response: ApiResponse): List<Schema<*>> =
         response.content.orEmpty()
             .values
             .mapNotNull { it.schema }
-            .flatMap(this::findAllRefs)
+            .flatMap(this::findAllSchemas)
 
 }
