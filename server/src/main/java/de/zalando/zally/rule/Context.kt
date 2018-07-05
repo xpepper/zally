@@ -12,18 +12,20 @@ import io.swagger.v3.oas.models.Operation
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.PathItem.HttpMethod
 import io.swagger.v3.oas.models.media.Schema
+import io.swagger.v3.oas.models.parameters.Parameter
 import io.swagger.v3.parser.OpenAPIV3Parser
 import io.swagger.v3.parser.converter.SwaggerConverter
 import io.swagger.v3.parser.core.models.ParseOptions
 import io.swagger.v3.parser.util.ResolverFully
 import org.slf4j.LoggerFactory
 
-class Context(openApi: OpenAPI, swagger: Swagger? = null) {
+class Context(private val openApi: OpenAPI, swagger: Swagger? = null) {
     private val recorder = MethodCallRecorder(openApi).skipMethods(*extensionNames)
     private val openApiAst = ReverseAst.fromObject(openApi).withExtensionMethodNames(*extensionNames).build()
     private val swaggerAst = swagger?.let { ReverseAst.fromObject(it).withExtensionMethodNames(*extensionNames).build() }
 
     val api = recorder.proxy
+    val unrecordedApi = openApi
 
     /**
      * Convenience method for filtering and iterating over the paths in order to create Violations.
@@ -75,6 +77,21 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
         .filterNotNull()
 
     /**
+     * Convenience method for filtering and iterating over the parameters in order to create Violations.
+     * @param parameterFilter a filter selecting the parameters to validate
+     * @param action the action to perform on filtered items
+     * @return a list of Violations
+     */
+    fun validateParameters(
+        parameterFilter: (Map.Entry<String, Parameter>) -> Boolean = { true },
+        action: (Map.Entry<String, Parameter>) -> List<Violation?>
+    ): List<Violation> = api.components.parameters
+        .orEmpty()
+        .filter(parameterFilter)
+        .flatMap(action)
+        .filterNotNull()
+
+    /**
      * Creates a List of one Violation with a pointer to the OpenAPI or Swagger model node specified,
      * defaulting to the last recorded location.
      * @param description the description of the Violation
@@ -113,7 +130,7 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
             Violation(description, pointer ?: recorder.pointer)
 
     /**
-     * Check whether a location should be ignored by a specific rule.
+     * Checks whether a location should be ignored by a specific rule.
      * @param pointer the location to check
      * @param ruleId the rule id to check
      * @return true if the location should be ignored for this rule
@@ -121,7 +138,12 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
     fun isIgnored(pointer: JsonPointer, ruleId: String): Boolean =
             swaggerAst?.isIgnored(pointer, ruleId) ?: openApiAst.isIgnored(pointer, ruleId)
 
-    private fun pointerForValue(value: Any): JsonPointer? = if (swaggerAst != null) {
+    /**
+     * Gets a [JsonPointer] reference to a given [value].
+     * @param value the value for which we want a pointer
+     * @return a [JsonPointer] reference to the [value] or `null` if it was not found.
+     */
+    fun pointerForValue(value: Any): JsonPointer? = if (swaggerAst != null) {
         val swaggerPointer = swaggerAst.getPointer(value)
         if (swaggerPointer != null)
             swaggerPointer
@@ -150,18 +172,19 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
         }
 
         fun createSwaggerContext(content: String): Context? =
-                SwaggerParser().readWithInfo(content, true)?.let {
-                    val swagger = it.swagger ?: return null
-                    val openApi = SwaggerConverter().convert(it)?.openAPI
+            SwaggerParser().readWithInfo(content, true)?.let {
+                val swagger = it.swagger ?: return null
+                val conversion = SwaggerConverter().convert(it)
+                val openApi = conversion?.openAPI
 
-                    openApi?.let {
-                        try {
-                            ResolverFully(true).resolveFully(it)
-                        } catch (e: NullPointerException) {
-                            log.warn("Failed to fully resolve Swagger schema.", e)
-                        }
-                        Context(openApi, swagger)
+                openApi?.let {
+                    try {
+                        ResolverFully(true).resolveFully(it)
+                    } catch (e: NullPointerException) {
+                        log.warn("Failed to fully resolve Swagger schema.", e)
                     }
+                    Context(it, swagger)
                 }
+            }
     }
 }
