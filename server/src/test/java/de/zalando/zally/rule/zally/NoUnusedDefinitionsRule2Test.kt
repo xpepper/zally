@@ -2,45 +2,50 @@ package de.zalando.zally.rule.zally
 
 import com.fasterxml.jackson.core.JsonPointer
 import de.zalando.zally.getContextFromFixture
+import de.zalando.zally.rule.Context
 import de.zalando.zally.rule.api.Violation
+import io.swagger.v3.oas.models.OpenAPI
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.Test
 
 class NoUnusedDefinitionsRule2Test {
 
     @Test
-    fun positiveCase() {
-        val context = getContextFromFixture("unusedDefinitionsValid.json")!!
+    fun `positive case causes no violation`() {
+        val context = getContextFromFixture("unusedDefinitionsValid.json")
         assertThat(rule.validate(context))
             .isEmpty()
     }
 
     @Test
-    fun negativeCase() {
-        val results = rule.validate(getContextFromFixture("unusedDefinitionsInvalid.json")!!)
+    fun `negative case causes violations`() {
+        val results = rule.validate(getContextFromFixture("unusedDefinitionsInvalid.json"))
         assertThat(results).hasSameElementsAs(listOf(
             vSchema("/definitions/PetName"),
             vParam("/parameters/FlowId")
         ))
     }
 
-    //    @Test
-//    fun emptySwaggerShouldPass() {
-//        val swagger = Swagger()
-//        assertThat(rule.validate(swagger)).isNull()
-//    }
-//
-//    @Test
-//    fun positiveCaseSpp() {
-//        val swagger = getFixture("api_spp.json")
-//        assertThat(rule.validate(swagger)).isNull()
-//    }
-//
-//    @Test
-//    fun positiveCaseTinbox() {
-//        val swagger = getFixture("api_tinbox.yaml")
-//        assertThat(rule.validate(swagger)).isNull()
-//    }
+    @Test
+    fun `empty specification causes no violation`() {
+        val context = Context(OpenAPI())
+        assertThat(rule.validate(context))
+            .isEmpty()
+    }
+
+    @Test
+    fun `the SPP API causes no violations`() {
+        val context = getContextFromFixture("api_spp.json")
+        assertThat(rule.validate(context))
+            .isEmpty()
+    }
+
+    @Test
+    fun `the tinbox API causes no violation`() {
+        val context = getContextFromFixture("api_tinbox.yaml")
+        assertThat(rule.validate(context))
+            .isEmpty()
+    }
 
     private val rule = NoUnusedDefinitionsRule2()
 

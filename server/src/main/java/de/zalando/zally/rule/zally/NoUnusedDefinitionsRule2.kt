@@ -10,7 +10,6 @@ import io.swagger.v3.oas.models.Operation
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.ComposedSchema
-import io.swagger.v3.oas.models.media.ObjectSchema
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.responses.ApiResponse
 
@@ -79,14 +78,12 @@ class NoUnusedDefinitionsRule2 {
                 findAllSchemas(schema.items)
             is ComposedSchema ->
                 findAllSchemas(schema)
-            is ObjectSchema -> {
+            else -> {
                 val self = if (includeSelf) listOf(schema) else emptyList()
                 val properties = schema.properties.orEmpty().values.flatMap(this::findAllSchemas)
                 val additionalProperties = findAllRefsFromProperties(schema.properties)
                 self + properties + additionalProperties
             }
-            else ->
-                emptyList()
         }
 
     private fun findAllSchemas(schema: ComposedSchema): List<Schema<*>> =

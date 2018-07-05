@@ -5,11 +5,7 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import de.zalando.zally.rule.Context
 import de.zalando.zally.rule.ObjectTreeReader
-import io.swagger.models.ModelImpl
-import io.swagger.models.Operation
-import io.swagger.models.Path
-import io.swagger.models.Response
-import io.swagger.models.Swagger
+import io.swagger.models.*
 import io.swagger.models.parameters.HeaderParameter
 import io.swagger.models.properties.StringProperty
 import io.swagger.parser.SwaggerParser
@@ -26,9 +22,11 @@ val testConfig: Config by lazy {
 
 fun getFixture(fileName: String): Swagger = SwaggerParser().read("fixtures/$fileName")
 
-fun getContextFromFixture(fileName: String): Context? {
+fun getContextFromFixture(fileName: String): Context {
     val content = getResourceContent(fileName)
-    return Context.createOpenApiContext(content) ?: Context.createSwaggerContext(content)
+    return Context.createOpenApiContext(content)
+        ?: Context.createSwaggerContext(content)
+        ?: throw AssertionError("Could not generate a context for fixture `$fileName`.")
 }
 
 fun getResourceContent(fileName: String): String = ClasspathHelper.loadFileFromClasspath("fixtures/$fileName")
