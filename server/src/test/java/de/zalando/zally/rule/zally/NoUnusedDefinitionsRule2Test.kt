@@ -2,15 +2,11 @@ package de.zalando.zally.rule.zally
 
 import com.fasterxml.jackson.core.JsonPointer
 import de.zalando.zally.getContextFromFixture
-import de.zalando.zally.getFixture
 import de.zalando.zally.rule.api.Violation
-import io.swagger.models.Swagger
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.Test
 
 class NoUnusedDefinitionsRule2Test {
-
-    private val rule = NoUnusedDefinitionsRule2()
 
     @Test
     fun positiveCase() {
@@ -23,12 +19,12 @@ class NoUnusedDefinitionsRule2Test {
     fun negativeCase() {
         val results = rule.validate(getContextFromFixture("unusedDefinitionsInvalid.json")!!)
         assertThat(results).hasSameElementsAs(listOf(
-            Violation("", JsonPointer.compile("/definitions/PetName")),
-            Violation("", JsonPointer.compile("/parameters/FlowId"))
+            vSchema("/definitions/PetName"),
+            vParam("/parameters/FlowId")
         ))
     }
 
-//    @Test
+    //    @Test
 //    fun emptySwaggerShouldPass() {
 //        val swagger = Swagger()
 //        assertThat(rule.validate(swagger)).isNull()
@@ -45,4 +41,17 @@ class NoUnusedDefinitionsRule2Test {
 //        val swagger = getFixture("api_tinbox.yaml")
 //        assertThat(rule.validate(swagger)).isNull()
 //    }
+
+    private val rule = NoUnusedDefinitionsRule2()
+
+    private fun vParam(pointer: String): Violation = Violation(
+        "Unused parameter definition.",
+        JsonPointer.compile(pointer)
+    )
+
+    private fun vSchema(pointer: String): Violation = Violation(
+        "Unused schema definition.",
+        JsonPointer.compile(pointer)
+    )
+
 }

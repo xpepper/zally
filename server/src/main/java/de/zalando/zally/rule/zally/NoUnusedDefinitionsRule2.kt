@@ -10,6 +10,7 @@ import io.swagger.v3.oas.models.Operation
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.ComposedSchema
+import io.swagger.v3.oas.models.media.ObjectSchema
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.responses.ApiResponse
 
@@ -55,7 +56,8 @@ class NoUnusedDefinitionsRule2 {
 
     private fun findAllSchemas(api: OpenAPI): List<Schema<*>> {
         val refsInPaths = api.paths.orEmpty().values.flatMap(this::findAllSchemas)
-        val refsInDefinitions = api.components?.schemas.orEmpty().values.flatMap(this::findAllSchemas)
+        val refsInDefinitions = api.components?.schemas.orEmpty().values
+            .flatMap { this.findAllSchemas(it, includeSelf = false) }
         return refsInPaths + refsInDefinitions
     }
 
@@ -69,17 +71,22 @@ class NoUnusedDefinitionsRule2 {
         return inParameters + inResponse
     }
 
-    private fun findAllSchemas(schema: Schema<*>): List<Schema<*>> =
+    private fun findAllSchemas(schema: Schema<*>): List<Schema<*>> = findAllSchemas(schema, true)
+
+    private fun findAllSchemas(schema: Schema<*>, includeSelf: Boolean): List<Schema<*>> =
         when (schema) {
             is ArraySchema ->
                 findAllSchemas(schema.items)
             is ComposedSchema ->
                 findAllSchemas(schema)
-            else -> {
-                listOf(schema) +
-                    schema.properties.orEmpty().values.flatMap(this::findAllSchemas) +
-                    findAllRefsFromProperties(schema.properties)
+            is ObjectSchema -> {
+                val self = if (includeSelf) listOf(schema) else emptyList()
+                val properties = schema.properties.orEmpty().values.flatMap(this::findAllSchemas)
+                val additionalProperties = findAllRefsFromProperties(schema.properties)
+                self + properties + additionalProperties
             }
+            else ->
+                emptyList()
         }
 
     private fun findAllSchemas(schema: ComposedSchema): List<Schema<*>> =
