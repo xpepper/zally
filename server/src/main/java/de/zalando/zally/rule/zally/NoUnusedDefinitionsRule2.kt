@@ -12,6 +12,7 @@ import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.ComposedSchema
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.responses.ApiResponse
+import org.slf4j.LoggerFactory
 
 @Rule(
     ruleSet = ZallyRuleSet::class,
@@ -22,8 +23,12 @@ import io.swagger.v3.oas.models.responses.ApiResponse
 class NoUnusedDefinitionsRule2 {
 
     @Check(severity = Severity.SHOULD)
-    fun validate(context: Context): List<Violation> =
-        findUnreferencedParameters(context) + findUnreferencedSchemas(context)
+    fun validate(context: Context): List<Violation> {
+        this.context = context
+        return findUnreferencedParameters(context) + findUnreferencedSchemas(context)
+    }
+
+    private var context: Context? = null // TODO: KILL MEEEEEEEEE (after debugging)
 
     private fun findUnreferencedParameters(context: Context): List<Violation> {
         val paramsInPaths = context.unrecordedApi.paths.orEmpty().flatMap { (_, path) ->
@@ -43,65 +48,105 @@ class NoUnusedDefinitionsRule2 {
     }
 
     private fun findUnreferencedSchemas(context: Context): List<Violation> {
-        val allRefs: Set<Schema<*>> = findAllSchemas(context.unrecordedApi).toSet()
-        return context.validateSchemas { (_, schema) ->
+        val allRefs: Set<Schema<*>> = findAllSchemasInApi(context.unrecordedApi).toSet()
+        return context.validateSchemas { (name, schema) ->
+            logger.debug("Finding if schema `$name` is referenced.")
             if (schema in allRefs) {
                 emptyList()
             } else {
+                logger.debug("Schema `$name` is not referenced. Generating violation.")
                 context.violations("Unused schema definition.", schema)
             }
         }
     }
 
-    private fun findAllSchemas(api: OpenAPI): List<Schema<*>> {
-        val refsInPaths = api.paths.orEmpty().values.flatMap(this::findAllSchemas)
-        val refsInDefinitions = api.components?.schemas.orEmpty().values
-            .flatMap { this.findAllSchemas(it, includeSelf = false) }
-        return refsInPaths + refsInDefinitions
+    private fun findAllSchemasInApi(api: OpenAPI): List<Schema<*>> {
+        val refsInPaths = api.paths.orEmpty()
+            .flatMap { (name, path) -> findAllSchemasInPath(name, path) }
+        val refsInSchemaDefinitions = api.components?.schemas.orEmpty()
+            .flatMap { (schemaName, schema) -> findAllSchemasInSchema(schemaName, schema, includeSelf = false) }
+        return refsInPaths + refsInSchemaDefinitions
     }
 
-    private fun findAllSchemas(path: PathItem): List<Schema<*>> =
-        path.readOperations().flatMap(this::findAllSchemas)
+    private fun findAllSchemasInPath(name: String, path: PathItem): List<Schema<*>> {
+        logger.debug("Find all schemas in path `$name`.")
+        return path.readOperations().flatMap(this::findAllSchemasInOperation)
+    }
 
-
-    private fun findAllSchemas(operation: Operation): List<Schema<*>> {
-        val inParameters = operation.requestBody?.content?.values.orEmpty().map { it.schema }.flatMap(this::findAllSchemas)  //operation.parameters.orEmpty().flatMap(this::findAllSchemas)
-        val inResponse = operation.responses.orEmpty().values.flatMap(this::findAllSchemas)
+    private fun findAllSchemasInOperation(operation: Operation): List<Schema<*>> {
+        logger.debug("Find all schemas in operation `${operation.operationId}`.")
+        val inParameters = operation.requestBody?.content.orEmpty()
+            .flatMap { (mediaTypeName, mediaType) ->
+                findAllSchemasInSchema("(schema for mediaType `$mediaTypeName`)", mediaType.schema)
+            }
+        val inResponse = operation.responses.orEmpty()
+            .flatMap { (status, response) ->
+                findAllSchemasInResponse(status, response)
+            }
         return inParameters + inResponse
     }
 
-    private fun findAllSchemas(schema: Schema<*>): List<Schema<*>> = findAllSchemas(schema, true)
+    private fun findAllSchemasInSchema(name: String, schema: Schema<*>): List<Schema<*>> = findAllSchemasInSchema(name, schema, true)
 
-    private fun findAllSchemas(schema: Schema<*>, includeSelf: Boolean): List<Schema<*>> =
-        when (schema) {
-            is ArraySchema ->
-                findAllSchemas(schema.items)
-            is ComposedSchema ->
-                findAllSchemas(schema)
+    private fun findAllSchemasInSchema(name: String, schema: Schema<*>, includeSelf: Boolean): List<Schema<*>> {
+        logger.debug("Find all schemas in schema `$name` (including itself: $includeSelf)")
+        val specific = when (schema) {
+            is ArraySchema -> {
+                val inItemsSchema = findAllSchemasInSchema("(items in array `$name`)", schema.items)
+                inItemsSchema
+            }
+            is ComposedSchema -> {
+                val inComposedSchema = findAllSchemasInComposedSchema(name, schema)
+                inComposedSchema
+            }
             else -> {
-                val self = if (includeSelf) listOf(schema) else emptyList()
-                val properties = schema.properties.orEmpty().values.flatMap(this::findAllSchemas)
-                val additionalProperties = findAllRefsFromProperties(schema.properties)
-                self + properties + additionalProperties
+                val properties = schema.properties.orEmpty()
+                    .flatMap { (propertyName, property) -> findAllSchemasInSchema(propertyName, property) }
+                val additionalProperties = findAllRefsInAdditionalProperties(name, schema.properties)
+                properties + additionalProperties
             }
         }
+        val self = if (includeSelf) listOf(schema) else emptyList()
+        return self + specific
+    }
 
-    private fun findAllSchemas(schema: ComposedSchema): List<Schema<*>> =
-        schema.allOf.orEmpty().flatMap(this::findAllSchemas) +
-            findAllRefsFromProperties(schema.additionalProperties)
+    private fun findAllSchemasInComposedSchema(name: String, schema: ComposedSchema): List<Schema<*>> {
+        logger.debug("Find all schemas in composed schema `$name`.")
+        val allOf = schema.allOf.orEmpty().flatMap { findAllSchemasInSchema("(allOf in `$name`)", it) }
+        val additionalProperties = findAllRefsInAdditionalProperties(name, schema.additionalProperties)
+        return allOf + additionalProperties
+    }
 
-    private fun findAllRefsFromProperties(additionalProperties: Any?): List<Schema<*>> =
-        when (additionalProperties) {
+    private fun findAllRefsInAdditionalProperties(name: String, additionalProperties: Any?): List<Schema<*>> {
+        logger.debug("Find all refs in additional property of `$name`.")
+        return when (additionalProperties) {
             is Schema<*> ->
-                findAllSchemas(additionalProperties)
+                findAllSchemasInSchema(name, additionalProperties)
+            is Map<*, *> ->
+                additionalProperties
+                    .mapNotNull { (additionalPropertyName, additionalProperty) ->
+                        when (additionalProperty) {
+                            is Schema<*> -> additionalPropertyName to additionalProperty
+                            else -> null
+                        }
+                    }
+                    .flatMap { (additionalPropertyName, additionalProperty) ->
+                        findAllSchemasInSchema(additionalPropertyName.toString(), additionalProperty)
+                    }
             else ->
                 emptyList()
         }
+    }
 
-    private fun findAllSchemas(response: ApiResponse): List<Schema<*>> =
-        response.content.orEmpty()
-            .values
-            .mapNotNull { it.schema }
-            .flatMap(this::findAllSchemas)
+    private fun findAllSchemasInResponse(status: String, response: ApiResponse): List<Schema<*>> {
+        logger.debug("Find all schemas in response `$status`.")
+        return response.content.orEmpty()
+            .flatMap { (mediaTypeName, mediaType) ->
+                findAllSchemasInSchema("(schema for mediaType `$mediaTypeName`)", mediaType.schema)
+            }
+    }
 
+    companion object {
+        private val logger = LoggerFactory.getLogger(this::class.java)
+    }
 }

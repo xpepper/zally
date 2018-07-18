@@ -18,6 +18,13 @@ class NoUnusedDefinitionsRule2Test {
     }
 
     @Test
+    fun `a correct API written in OpenAPI 3 causes no violation`() {
+        val results = rule.validate(getContextFromFixture("openapi3_petstore.yaml"))
+        assertThat(results)
+            .isEmpty()
+    }
+
+    @Test
     fun `negative case causes violations`() {
         val results = rule.validate(getContextFromFixture("unusedDefinitionsInvalid.json"))
         assertThat(results).hasSameElementsAs(listOf(
