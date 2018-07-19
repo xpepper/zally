@@ -55,10 +55,10 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
         action: (Map.Entry<HttpMethod, Operation>) -> List<Violation?>
     ): List<Violation> = validatePaths(pathFilter) { (_, path) ->
         path.readOperationsMap()
-            .orEmpty()
-            .filter(operationFilter)
-            .flatMap(action)
-            .filterNotNull()
+                .orEmpty()
+                .filter(operationFilter)
+                .flatMap(action)
+                .filterNotNull()
     }
 
     /**
