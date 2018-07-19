@@ -11,8 +11,11 @@ import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.Operation
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.PathItem.HttpMethod
+import io.swagger.v3.oas.models.media.MediaType
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.parameters.Parameter
+import io.swagger.v3.oas.models.parameters.RequestBody
+import io.swagger.v3.oas.models.responses.ApiResponse
 import io.swagger.v3.parser.OpenAPIV3Parser
 import io.swagger.v3.parser.converter.SwaggerConverter
 import io.swagger.v3.parser.core.models.ParseOptions
@@ -168,9 +171,32 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
             return OpenAPIV3Parser().readContents(content, null, parseOptions)?.openAPI?.let {
                 ResolverFully(true).resolveFully(it) // workaround for NPE bug in swagger-parser
                 setNamesToSchemas(it)
+                completeResolve(it)
                 Context(it)
             }
         }
+
+        fun createSwaggerContext(content: String): Context? =
+            SwaggerParser().readWithInfo(content, true)?.let {
+                val swagger = it.swagger ?: return null
+                val conversion = SwaggerConverter().convert(it)
+                if (conversion?.messages?.isNotEmpty() == true) {
+                    log.debug("Conversion messages:")
+                    conversion.messages.forEach { log.debug(it) }
+                }
+                val openApi = conversion?.openAPI
+
+                openApi?.let {
+                    try {
+                        ResolverFully(true).resolveFully(it)
+                    } catch (e: NullPointerException) {
+                        log.warn("Failed to fully resolve Swagger schema.", e)
+                    }
+                    setNamesToSchemas(it)
+                    completeResolve(it)
+                    Context(it, swagger)
+                }
+            }
 
         private fun setNamesToSchemas(api: OpenAPI) {
             api.components.schemas.forEach { (name, schema) ->
@@ -180,20 +206,132 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
             }
         }
 
-        fun createSwaggerContext(content: String): Context? =
-            SwaggerParser().readWithInfo(content, true)?.let {
-                val swagger = it.swagger ?: return null
-                val conversion = SwaggerConverter().convert(it)
-                val openApi = conversion?.openAPI
+        private fun completeResolve(openAPI: OpenAPI) {
 
-                openApi?.let {
-                    try {
-                        ResolverFully(true).resolveFully(it)
-                    } catch (e: NullPointerException) {
-                        log.warn("Failed to fully resolve Swagger schema.", e)
+            val alreadyChecked = mutableSetOf<Any>()
+
+            fun tryResolveSchema(ref: String): Schema<*>? {
+                val part = ref.split('/')
+                if (part[0] == "#") {
+                    if (part[1] == "components") {
+                        if (part[2] == "schemas") {
+                            if (part.size == 4) {
+                                val schemaName = part[3]
+                                return openAPI.components.schemas[schemaName]
+                            }
+                        }
                     }
-                    Context(it, swagger)
+                }
+                return null
+            }
+
+            fun checkRef(ref: String?) {
+                if (!ref.isNullOrBlank()) {
+                    log.debug("Reference not resolved: `$ref`")
                 }
             }
+
+            fun checkAdditionalPropertiesAsSchema(schema: Schema<*>, addProp: Schema<*>) {
+                if (!addProp.`$ref`.isNullOrBlank()) {
+                    val resolved = tryResolveSchema(addProp.`$ref`)
+                    if (resolved === null) {
+                        log.debug("Unable to resolve reference: ${addProp.`$ref`}")
+                    } else {
+                        log.debug("Resolved ref ${addProp.`$ref`}")
+                        schema.additionalProperties = resolved
+                    }
+                }
+            }
+
+            fun checkAdditionalPropertiesAsMap(schema: Schema<*>, addProp: MutableMap<Any, Any>) {
+                val newProps = HashMap<Any, Any>(addProp)
+                addProp.forEach { (propName, property) ->
+                    when (property) {
+                        is Schema<*> -> {
+                            if (!property.`$ref`.isNullOrBlank()) {
+                                val resolved = tryResolveSchema(property.`$ref`)
+                                if (resolved === null) {
+                                    log.debug("Unable to resolve reference: ${property.`$ref`}")
+                                    newProps[propName] = property
+                                } else {
+                                    log.debug("Resolved ref ${property.`$ref`}")
+                                    newProps[propName] = resolved
+                                }
+                            }
+                        }
+                        else ->
+                            newProps[propName] = property
+                    }
+                }
+                schema.additionalProperties = newProps
+            }
+
+            fun skipCheck(element: Any): Boolean {
+                if (element in alreadyChecked) {
+                    return true
+                }
+                alreadyChecked += element
+                return false
+            }
+
+            fun checkSchema(schema: Schema<*>) {
+                if (skipCheck(schema)) return
+                checkRef(schema.`$ref`)
+
+                schema.properties.orEmpty().values.forEach(::checkSchema)
+
+                val addProp = schema.additionalProperties
+                when (addProp) {
+                    is Schema<*> ->
+                        checkAdditionalPropertiesAsSchema(schema, addProp)
+                    is MutableMap<*, *> ->
+                        @Suppress("UNCHECKED_CAST")
+                        checkAdditionalPropertiesAsMap(schema, addProp as MutableMap<Any, Any>)
+                }
+
+            }
+
+            fun checkParameter(parameter: Parameter) {
+                if (skipCheck(parameter)) return
+                checkRef(parameter.`$ref`)
+                checkSchema(parameter.schema)
+            }
+
+            fun checkContent(mediaType: MediaType) {
+                if (skipCheck(mediaType)) return
+                checkSchema(mediaType.schema)
+            }
+
+            fun checkResponse(response: ApiResponse) {
+                if (skipCheck(response)) return
+                checkRef(response.`$ref`)
+                response.content.orEmpty().values.forEach(::checkContent)
+            }
+
+            fun checkRequestBody(requestBody: RequestBody?) {
+                if (requestBody === null) return
+                if (skipCheck(requestBody)) return
+                checkRef(requestBody.`$ref`)
+                requestBody.content.orEmpty().values.forEach(::checkContent)
+            }
+
+            fun checkOperation(op: Operation) {
+                if (skipCheck(op)) return
+                op.parameters.orEmpty().forEach(::checkParameter)
+                op.responses.orEmpty().values.forEach(::checkResponse)
+                checkRequestBody(op.requestBody)
+            }
+
+            fun checkPath(path: PathItem) {
+                if (skipCheck(path)) return
+                checkRef(path.`$ref`)
+                path.readOperations().forEach(::checkOperation)
+            }
+
+            openAPI.components.schemas.orEmpty().values.forEach(::checkSchema)
+            openAPI.components.parameters.orEmpty().values.forEach(::checkParameter)
+            openAPI.paths.orEmpty().values.forEach(::checkPath)
+        }
+
     }
 }
