@@ -48,14 +48,19 @@ class NoUnusedDefinitionsRule2 {
     }
 
     private fun findUnreferencedSchemas(context: Context): List<Violation> {
-        val allRefs: Set<Schema<*>> = findAllSchemasInApi(context.unrecordedApi).toSet()
+        val allSchemas: Set<Schema<*>> = findAllSchemasInApi(context.unrecordedApi).toSet()
+        val allRefs = allSchemas.mapNotNull { it.`$ref` }.toSet()
         return context.validateSchemas { (name, schema) ->
             log.debug("Finding if schema `$name` is referenced.")
-            if (schema in allRefs) {
-                emptyList()
-            } else {
-                log.debug("Schema `$name` is not referenced. Generating violation.")
-                context.violations("Unused schema definition.", schema)
+            when {
+                schema in allSchemas ->
+                    emptyList()
+                "#/components/schemas/$name" in allRefs ->
+                    emptyList()
+                else -> {
+                    log.debug("Schema `$name` is not referenced. Generating violation.")
+                    context.violations("Unused schema definition.", schema)
+                }
             }
         }
     }
@@ -82,6 +87,23 @@ class NoUnusedDefinitionsRule2 {
     private fun findAllSchemasInSchema(schema: Schema<*>): List<Schema<*>> = findAllSchemasInSchema(schema, true)
 
     private fun findAllSchemasInSchema(schema: Schema<*>, includeSelf: Boolean): List<Schema<*>> {
+
+        // Make sure all references are resolved.
+        // This is necessary since the `ResolverFully` does not seem to resolve them.
+        // Good news is: they are correctly converted from Swagger (v2) to OpenAPI (v3).
+        if (!schema.`$ref`.isNullOrBlank()) {
+            log.debug("Schema has a `\$ref` set. Trying to resolve.")
+            val resolved = context?.resolveSchema(schema.`$ref`)
+            return if (resolved === null) {
+                log.debug("Unable to resolve ref `${schema.`$ref`}`.")
+                listOf(schema)
+            } else {
+                log.debug("Resolved ref `${schema.`$ref`}`.")
+                schema.`$ref` = null
+                findAllSchemasInSchema(resolved)
+            }
+        }
+
         val specific = when (schema) {
             is ArraySchema -> {
                 val inItemsSchema = findAllSchemasInSchema(schema.items)
@@ -93,10 +115,11 @@ class NoUnusedDefinitionsRule2 {
             }
             else -> {
                 val properties = schema.properties.orEmpty().values.flatMap(this::findAllSchemasInSchema)
-                val additionalProperties = findAllRefsInAdditionalProperties(schema.properties)
+                val additionalProperties = findAllRefsInAdditionalProperties(schema.additionalProperties)
                 properties + additionalProperties
             }
         }
+
         val self = if (includeSelf) listOf(schema) else emptyList()
         return self + specific
     }
@@ -109,6 +132,8 @@ class NoUnusedDefinitionsRule2 {
 
     private fun findAllRefsInAdditionalProperties(additionalProperties: Any?): List<Schema<*>> {
         return when (additionalProperties) {
+            null ->
+                emptyList()
             is Schema<*> ->
                 findAllSchemasInSchema(additionalProperties)
             is Map<*, *> ->
