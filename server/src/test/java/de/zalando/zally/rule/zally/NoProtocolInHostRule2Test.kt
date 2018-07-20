@@ -68,13 +68,27 @@ class NoProtocolInHostRule2Test {
         assertThat(rule.validate(context)).isEmpty()
     }
 
-
-//
-//    @Test
-//    fun positiveCaseSpa() {
-//        val swagger = getFixture("api_spa.yaml")
-//        assertThat(rule.validate(swagger)).isNull()
-//    }
+    @Test
+    fun `PROBLEM -- A Swagger API with a host is automatically converted to a URL with protocol`() {
+        @Language("YAML")
+        val swaggerYaml = """
+            swagger: "2.0"
+            info:
+              title: Test
+            host: test.zalan.do
+            schemes:
+              - https
+            paths:
+              /foo:
+                get:
+                  responses:
+                    200:
+                      description: It worked!
+        """.trimIndent()
+        val context = Context.createSwaggerContext(swaggerYaml, true)!!
+        assertThat(context.api.servers).noneMatch { it.url.startsWith("https://") }
+        assertThat(rule.validate(context)).isEmpty()
+    }
 
     @Test
     fun `the SPA API causes no violation`() {
