@@ -7,7 +7,6 @@ import de.zalando.zally.rule.api.Severity
 import de.zalando.zally.rule.api.Violation
 import de.zalando.zally.util.getAllSchemas
 import de.zalando.zally.util.isEnum
-import io.swagger.v3.oas.models.media.Schema
 
 @Rule(
     ruleSet = ZalandoRuleSet::class,
@@ -21,6 +20,7 @@ class ExtensibleEnumRule2 {
     fun validate(context: Context): List<Violation> =
         context.unrecordedApi
             .getAllSchemas()
-            .filter(Schema<*>::isEnum)
+            .map { it.schema }
+            .filter { it.isEnum() }
             .map { context.violation("Schema is not an extensible enum", it) }
 }

@@ -15,48 +15,6 @@ class ExtensibleEnumRule2Test {
     private val expectedDescription = "Schema is not an extensible enum"
 
     @Test
-    fun foo() {
-        @Language("YAML")
-        val context = getContextFromOpenAPILiteral("""
-            openapi: 3.0.0
-            info:
-              version: 0.0.0
-              title: title
-              description: description
-              termsOfService: terms
-              contact:
-                name:  asd
-                url: http://www.foo.bar
-                email: a@b.c
-              license:
-                name: MIT
-                url: http://opensource.org/licenses/MIT
-            paths: {}
-            components:
-              schemas:
-                Foo:
-                  type: object
-                  properties:
-                    name:
-                      type: string
-                    barRef:
-                      "${'$'}ref": '#/components/schemas/bar'
-                Bar:
-                  type: object
-                  properties:
-                    name:
-                      type: string
-                    fooRef:
-                      "${'$'}ref": '#/components/schemas/Foo'
-        """.trimIndent())
-        OpenAPIPostProcessor(context.unrecordedApi).also {
-            it.setComponentsName()
-        }
-        val allRefs = context.unrecordedApi.getAllSchemas()
-        assertThat(allRefs).isNotEmpty
-    }
-
-    @Test
     fun `an empty OpenAPI specification causes no violation`() {
         @Language("YAML")
         val context = getContextFromOpenAPILiteral("""

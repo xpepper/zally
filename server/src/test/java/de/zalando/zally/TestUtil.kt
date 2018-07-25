@@ -29,7 +29,7 @@ fun getFixture(fileName: String): Swagger = SwaggerParser().read("fixtures/$file
 
 fun getContextFromOpenAPILiteral(content: String): Context {
     val context = Context.createOpenApiContext(content, failOnParseErrors = true)
-    assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was null.")
+    assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was n ull.")
     return context!!
 }
 

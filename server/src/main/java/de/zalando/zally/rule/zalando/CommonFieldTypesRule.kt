@@ -26,7 +26,7 @@ class CommonFieldTypesRule(@Autowired rulesConfig: Config) {
     fun checkTypesOfCommonFields(context: Context): List<Violation> =
         context.api.getAllSchemas()
             .flatMap {
-                checkAllPropertiesOf(it, check = { name, schema ->
+                checkAllPropertiesOf(it.schema, check = { name, schema ->
                     val violationDesc = checkField(name, schema)
                     if (violationDesc != null) {
                         context.violations(violationDesc, schema)
