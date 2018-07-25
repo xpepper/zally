@@ -23,6 +23,7 @@ class Context(openApi: OpenAPI, swagger: Swagger? = null) {
     private val swaggerAst = swagger?.let { ReverseAst.fromObject(it).withExtensionMethodNames(*extensionNames).build() }
 
     val api = recorder.proxy
+    val unrecordedApi = openApi
 
     /**
      * Convenience method for filtering and iterating over the paths in order to create Violations.

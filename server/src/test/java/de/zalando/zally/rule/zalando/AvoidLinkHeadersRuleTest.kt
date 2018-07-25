@@ -1,7 +1,8 @@
 package de.zalando.zally.rule.zalando
 
-import de.zalando.zally.rule.Context
-import de.zalando.zally.rule.ZallyAssertions.Companion.assertThat
+import de.zalando.zally.getContextFromOpenAPILiteral
+import de.zalando.zally.getContextFromSwaggerLiteral
+import de.zalando.zally.rule.assertThat
 import de.zalando.zally.testConfig
 import org.intellij.lang.annotations.Language
 import org.junit.Test
@@ -13,7 +14,7 @@ class AvoidLinkHeadersRuleTest {
     @Test
     fun `a Swagger API with no header called Link produces no violation`() {
         @Language("YAML")
-        val context = Context.createSwaggerContext("""
+        val context = getContextFromSwaggerLiteral("""
             swagger: 2.0
             info:
               title: Clean Swagger API
@@ -41,7 +42,7 @@ class AvoidLinkHeadersRuleTest {
                 name: product_id
                 in: path
                 type: string
-        """.trimIndent(), failOnParseErrors = true)!!
+        """.trimIndent())
         val violations = rule.validate(context)
         assertThat(violations).isEmpty()
     }
@@ -49,7 +50,7 @@ class AvoidLinkHeadersRuleTest {
     @Test
     fun `an OpenAPI 3 API with no header called Link produces no violation`() {
         @Language("YAML")
-        val context = Context.createOpenApiContext("""
+        val context = getContextFromOpenAPILiteral("""
             openapi: 3.0.0
             info:
               title: Clean Swagger API
@@ -86,7 +87,7 @@ class AvoidLinkHeadersRuleTest {
                   required: true
                   schema:
                     type: string
-        """.trimIndent(), failOnParseErrors = true)!!
+        """.trimIndent())
         val violations = rule.validate(context)
         assertThat(violations).isEmpty()
     }
@@ -94,7 +95,7 @@ class AvoidLinkHeadersRuleTest {
     @Test
     fun `an API with Link headers causes violations`() {
         @Language("YAML")
-        val context = Context.createSwaggerContext("""
+        val context = getContextFromSwaggerLiteral("""
             swagger: 2.0
             info:
               title: Clean Swagger API
@@ -123,7 +124,7 @@ class AvoidLinkHeadersRuleTest {
                         Link:
                           type: string
                           format: url
-        """.trimIndent(), failOnParseErrors = true)!!
+        """.trimIndent())
         val violations = rule.validate(context)
         assertThat(violations)
             .descriptionsAllEqualTo("Do Not Use Link Headers with JSON entities")

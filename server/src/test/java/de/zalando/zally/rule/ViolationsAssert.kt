@@ -1,5 +1,6 @@
 package de.zalando.zally.rule
 
+import com.fasterxml.jackson.core.JsonPointer
 import de.zalando.zally.rule.api.Violation
 import org.assertj.core.api.AbstractListAssert
 import org.assertj.core.api.ListAssert
@@ -29,7 +30,14 @@ class ViolationsAssert(violations: List<Violation>?) : AbstractListAssert<Violat
 
     fun pointersEqualTo(vararg pointers: String): ViolationsAssert {
         isNotNull
-        ListAssert(actual.map { it.pointer?.toString() }).`as`("pointers").containsExactly(*pointers)
+        ListAssert(actual.map { it.pointer?.toString() }).`as`("pointers").containsExactlyInAnyOrder(*pointers)
+        return this
+    }
+
+    fun containsOnly(vararg entries: Pair<String, String>): ViolationsAssert {
+        isNotNull
+        val expectedViolations = entries.map { (desc, ptr) -> Violation(desc, JsonPointer.compile(ptr)) }
+        this.containsOnlyElementsOf(expectedViolations)
         return this
     }
 }

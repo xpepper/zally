@@ -1,7 +1,7 @@
 package de.zalando.zally.rule.zalando
 
 import de.zalando.zally.rule.Context
-import de.zalando.zally.rule.ZallyAssertions.Companion.assertThat
+import de.zalando.zally.rule.assertThat
 import org.junit.Test
 
 class ApiIdentifierRuleTest {

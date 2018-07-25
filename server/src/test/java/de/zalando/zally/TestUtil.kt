@@ -19,12 +19,25 @@ import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.Paths
 import io.swagger.v3.oas.models.responses.ApiResponse
 import io.swagger.v3.oas.models.responses.ApiResponses
+import org.assertj.core.api.Assertions.assertThat
 
 val testConfig: Config by lazy {
     ConfigFactory.load("rules-config.conf")
 }
 
 fun getFixture(fileName: String): Swagger = SwaggerParser().read("fixtures/$fileName")
+
+fun getContextFromOpenAPILiteral(content: String): Context {
+    val context = Context.createOpenApiContext(content, failOnParseErrors = true)
+    assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was null.")
+    return context!!
+}
+
+fun getContextFromSwaggerLiteral(content: String): Context {
+    val context = Context.createSwaggerContext(content, failOnParseErrors = true)
+    assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was null.")
+    return context!!
+}
 
 fun getContextFromFixture(fileName: String): Context {
     val content = getResourceContent(fileName)

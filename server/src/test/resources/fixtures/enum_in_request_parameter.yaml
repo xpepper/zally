@@ -456,9 +456,9 @@ definitions:
   LifecycleState:
     type: string
     x-extensible-enum:
-    - ACTIVE
-    - INACTIVE
-    - DECOMMISSIONED
+      - ACTIVE
+      - INACTIVE
+      - DECOMMISSIONED
 
   DefinitionLink:
     type: object

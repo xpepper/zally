@@ -24,6 +24,7 @@ public final class JsonPointers {
         createFn(compile("^/servers/.*$"), "/basePath"),
         createFn(compile("^/components/schemas/(.*)$"), "/definitions/%s"),
         createFn(compile("^/components/responses/(.*)$"), "/responses/%s"),
+        createFn(compile("^/components/parameters/(.*)/schema$"), "/parameters/%s"),
         createFn(compile("^/components/parameters/(.*)$"), "/parameters/%s"),
         createFn(compile("^/components/securitySchemes/(.*)$"), "/securityDefinitions/%s"),
         createFn(compile("^/paths/(.+/responses/.+)/content/.+/(schema.*)$"), "/paths/%s/%s"),
