@@ -3,8 +3,9 @@ package de.zalando.zally
 import com.fasterxml.jackson.databind.JsonNode
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
-import de.zalando.zally.rule.Context
+import de.zalando.zally.rule.DefaultContext
 import de.zalando.zally.rule.ObjectTreeReader
+import de.zalando.zally.rule.api.Context
 import io.swagger.models.ModelImpl
 import io.swagger.models.Operation
 import io.swagger.models.Path
@@ -28,21 +29,21 @@ val testConfig: Config by lazy {
 fun getFixture(fileName: String): Swagger = SwaggerParser().read("fixtures/$fileName")
 
 fun getContextFromOpenAPILiteral(content: String): Context {
-    val context = Context.createOpenApiContext(content, failOnParseErrors = true)
-    assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was n ull.")
+    val context = DefaultContext.createOpenApiContext(content, failOnParseErrors = true)
+    assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was null.")
     return context!!
 }
 
 fun getContextFromSwaggerLiteral(content: String): Context {
-    val context = Context.createSwaggerContext(content, failOnParseErrors = true)
+    val context = DefaultContext.createSwaggerContext(content, failOnParseErrors = true)
     assertThat(context).isNotNull.withFailMessage("The 'Context' object returned was null.")
     return context!!
 }
 
 fun getContextFromFixture(fileName: String): Context {
     val content = getResourceContent(fileName)
-    return Context.createOpenApiContext(content)
-        ?: Context.createSwaggerContext(content)
+    return DefaultContext.createOpenApiContext(content)
+        ?: DefaultContext.createSwaggerContext(content)
         ?: throw RuntimeException("Unable to create context.")
 }
 
